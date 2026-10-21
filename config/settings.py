@@ -12,6 +12,15 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 TIMEZONE = os.getenv("TIMEZONE", "UTC").strip()
 
+# Whitelist de IDs autorizados de Telegram (separados por coma)
+raw_allowed = os.getenv("ALLOWED_USER_IDS", "").strip()
+ALLOWED_USER_IDS: set[int] = set()
+if raw_allowed:
+    for uid_str in raw_allowed.split(","):
+        cleaned = uid_str.strip()
+        if cleaned.isdigit():
+            ALLOWED_USER_IDS.add(int(cleaned))
+
 DATABASE_PATH = BASE_DIR / "data" / "assistant.db"
 
 def validate_config() -> None:

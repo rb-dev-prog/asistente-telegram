@@ -7,11 +7,13 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
+    TypeHandler,
+    ApplicationHandlerStop,
     ContextTypes,
     filters
 )
 from telegram.request import HTTPXRequest
-from config.settings import TELEGRAM_BOT_TOKEN, validate_config
+from config.settings import TELEGRAM_BOT_TOKEN, validate_config, ALLOWED_USER_IDS
 from database.connection import init_db
 from database.repository import list_notes, get_pending_reminders, list_events, delete_note, delete_event, delete_reminder
 from services.ai_service import process_user_input, user_histories
@@ -22,6 +24,36 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+async def auth_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user:
+        return
+    user_id = update.effective_user.id
+    
+    # Si ALLOWED_USER_IDS está configurado y el usuario no está en la lista blanca
+    if ALLOWED_USER_IDS and user_id not in ALLOWED_USER_IDS:
+        logger.warning(f"Acceso bloqueado para usuario no autorizado: {user_id} (@{update.effective_user.username})")
+        
+        if update.callback_query:
+            await update.callback_query.answer("⛔ No estás autorizado para usar este bot.", show_alert=True)
+            raise ApplicationHandlerStop
+
+        if update.effective_message:
+            await update.effective_message.reply_text(
+                f"⛔ **Acceso no autorizado**\n\n"
+                f"Este asistente es privado. Tu ID de Telegram es:\n`{user_id}`\n\n"
+                f"Copiá y pasale este ID al administrador para que te habilite en el sistema.",
+                parse_mode="Markdown"
+            )
+        raise ApplicationHandlerStop
+
+async def cmd_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if user and update.effective_message:
+        await update.effective_message.reply_text(
+            f"🆔 Tu User ID de Telegram es: `{user.id}`",
+            parse_mode="Markdown"
+        )
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
@@ -343,7 +375,12 @@ def main():
         .build()
     )
     
+    # Middleware de autorización global (se ejecuta antes que cualquier otro handler)
+    application.add_handler(TypeHandler(Update, auth_middleware), group=-1)
+
     # Handlers de comandos
+    application.add_handler(CommandHandler("id", cmd_id))
+    application.add_handler(CommandHandler("mi_id", cmd_id))
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("notas", cmd_notas))
     application.add_handler(CommandHandler("borrar_nota", cmd_borrar_nota))
